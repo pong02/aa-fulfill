@@ -178,11 +178,9 @@ def process_orders():
 
     df = pd.read_csv(MERGED_LABELS_CSV)
 
-    # Prepare output dataframes
-    fulfillable_df = pd.DataFrame(columns=list(df.columns) + ['sku_qty'])
-    unfulfillable_df = pd.DataFrame(columns=df.columns)
-    misc_df = pd.DataFrame(columns=df.columns)
-
+    # ────────────────────────────────────────────────
+    # Helper: parse custom_label into [(barcode, qty)]
+    # ────────────────────────────────────────────────
     def parse_label(label):
         match = re.search(r'^\[.*?\]/\[.*?\]\s*(.*)$', str(label).strip())
         if not match:
@@ -194,15 +192,34 @@ def process_orders():
         orders = []
         for part in parts:
             if not part or '*' not in part:
-                return []  # invalid format → treat whole row as misc
+                return []
             barcode, qty_str = part.rsplit('*', 1)
             barcode = barcode.strip()
             qty_str = qty_str.strip()
             if not qty_str.isdigit():
                 return []
-            qty = int(qty_str)
-            orders.append((barcode, qty))
+            orders.append((barcode, int(qty_str)))
         return orders
+
+    # ────────────────────────────────────────────────
+    # Helper: translate barcode → SKU in custom_label
+    # ────────────────────────────────────────────────
+    def translate_custom_label(label, orders):
+        new_label = label
+        for bc, qty in orders:
+            sku = sku_dict.get(bc, bc)
+            new_label = re.sub(
+                rf'\b{re.escape(bc)}\s*\*\s*{qty}\b',
+                f'{sku}*{qty}',
+                new_label
+            )
+        return new_label
+
+    # Prepare output dataframes
+    new_columns = list(df.columns) + ["old_custom_label"]
+    fulfillable_df = pd.DataFrame(columns=new_columns)
+    unfulfillable_df = pd.DataFrame(columns=new_columns)
+    misc_df = pd.DataFrame(columns=df.columns)
 
     print("\nProcessing orders...")
     for _, row in df.iterrows():
@@ -213,11 +230,31 @@ def process_orders():
                 misc_df = pd.concat([misc_df, row.to_frame().T], ignore_index=True)
                 continue
 
-            # Heuristic: if any "barcode" doesn't start with digit → misc
-            is_misc = any(not bc or not bc[0].isdigit() for bc, _ in orders)
-            if is_misc:
+            # Heuristic: barcode must start with digit
+            if any(not bc or not bc[0].isdigit() for bc, _ in orders):
                 misc_df = pd.concat([misc_df, row.to_frame().T], ignore_index=True)
                 continue
+
+            # Build SKU*QTY string
+            sku_qty_parts = []
+            for bc, q in orders:
+                sku = sku_dict.get(bc, 'UNKNOWN')
+                sku_qty_parts.append(f"{sku}*{q}")
+            sku_qty_str = ', '.join(sku_qty_parts)
+
+            new_row = row.copy()
+
+            # Preserve original custom_label
+            new_row['old_custom_label'] = new_row['custom_label']
+
+            # Replace barcode with SKU in custom_label
+            new_row['custom_label'] = translate_custom_label(
+                new_row['custom_label'],
+                orders
+            )
+
+            # Replace sort column
+            new_row['sort'] = sku_qty_str
 
             # Check fulfillability
             can_fulfill = all(
@@ -226,21 +263,17 @@ def process_orders():
             )
 
             if can_fulfill:
-                # Decrease stock
                 for bc, q in orders:
                     stock[bc] -= q
-                # Build sku*qty string
-                sku_qty_parts = []
-                for bc, q in orders:
-                    sku = sku_dict.get(bc, 'UNKNOWN')
-                    sku_qty_parts.append(f"{sku}*{q}")
-                sku_qty_str = ', '.join(sku_qty_parts)
-
-                new_row = row.copy()
-                new_row['sku_qty'] = sku_qty_str
-                fulfillable_df = pd.concat([fulfillable_df, new_row.to_frame().T], ignore_index=True)
+                fulfillable_df = pd.concat(
+                    [fulfillable_df, new_row.to_frame().T],
+                    ignore_index=True
+                )
             else:
-                unfulfillable_df = pd.concat([unfulfillable_df, row.to_frame().T], ignore_index=True)
+                unfulfillable_df = pd.concat(
+                    [unfulfillable_df, new_row.to_frame().T],
+                    ignore_index=True
+                )
 
         except Exception as e:
             print(f"Error processing row: {label} → {e}")
@@ -257,7 +290,6 @@ def process_orders():
     print(f"  Unfulfillable → {UNFULFILLABLE_CSV} ({len(unfulfillable_df)} rows)")
     print(f"  Misc         → {MISC_CSV} ({len(misc_df)} rows)")
     print("="*60)
-
 
 # ────────────────────────────────────────────────
 #  MAIN
