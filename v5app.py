@@ -12,22 +12,44 @@ from pathlib import Path
 #  CONFIG
 # ────────────────────────────────────────────────
 
-API_TOKEN = ""
+from pathlib import Path
+
+# Resolve project base path from current working directory
+BASE_PATH = Path.cwd()
+
+# Load secrets
+SECRETS_FILE = BASE_PATH / "secrets.json"
+
+if not SECRETS_FILE.exists():
+    raise FileNotFoundError(
+        f"Missing secrets.json at {SECRETS_FILE}. "
+        "Create it with BOXHERO_API_TOKEN."
+    )
+
+with open(SECRETS_FILE, "r", encoding="utf-8") as f:
+    secrets = json.load(f)
+
+API_TOKEN = secrets.get("BOXHERO_API_TOKEN")
+
+if not API_TOKEN:
+    raise ValueError("BOXHERO_API_TOKEN not found in secrets.json")
+
 BASE_URL = "https://rest.boxhero-app.com"
+
 HEADERS = {
     "Authorization": f"Bearer {API_TOKEN}",
     "Accept": "application/json"
 }
 
-BASE_PATH = Path('/Users/jia/projects/gen/inventory_checker/version2/')
-FULL_ITEMS_JSON = BASE_PATH / 'full_items.json'
-MERGED_LABELS_CSV = BASE_PATH / 'merged_labels.csv'
-FULFILLABLE_CSV = BASE_PATH / 'fulfillable.csv'
-UNFULFILLABLE_CSV = BASE_PATH / 'unfulfillable.csv'
-MISC_CSV = BASE_PATH / 'misc.csv'
+# Data files (all relative to cwd)
+FULL_ITEMS_JSON = BASE_PATH / "full_items.json"
+MERGED_LABELS_CSV = BASE_PATH / "merged_labels.csv"
+FULFILLABLE_CSV = BASE_PATH / "fulfillable.csv"
+UNFULFILLABLE_CSV = BASE_PATH / "unfulfillable.csv"
+MISC_CSV = BASE_PATH / "misc.csv"
 
-# Optional: if you want to filter by specific locations
-LOCATION_IDS = None  # ← change to e.g. [12345, 67890] if needed
+# Optional: filter by specific locations
+LOCATION_IDS = None  # e.g. [12345, 67890]
 
 # ────────────────────────────────────────────────
 #  PART 1: Fetch all items from BoxHero
