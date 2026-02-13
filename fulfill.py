@@ -238,6 +238,7 @@ def process_orders():
             # Build SKU*QTY string
             sku_qty_parts = []
             for bc, q in orders:
+                bc = bc.rstrip('!')
                 sku = sku_dict.get(bc, 'UNKNOWN')
                 sku_qty_parts.append(f"{sku}*{q}")
             sku_qty_str = ', '.join(sku_qty_parts)
