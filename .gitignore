@@ -5,6 +5,7 @@ secrets.json
 fulfillable.csv
 unfulfillable.csv
 misc.csv
+out_of_stock.csv
 
 merged_labels.csv
 

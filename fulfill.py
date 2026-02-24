@@ -9,8 +9,6 @@ from pathlib import Path
 #  CONFIG
 # ────────────────────────────────────────────────
 
-from pathlib import Path
-
 # Resolve project base path from current working directory
 BASE_PATH = Path.cwd()
 
@@ -217,9 +215,9 @@ def process_orders():
     new_columns = list(df.columns) + ["old_custom_label"]
     fulfillable_df = pd.DataFrame(columns=new_columns)
     unfulfillable_df = pd.DataFrame(columns=new_columns)
-    misc_df = pd.DataFrame(columns(df.columns))
+    misc_df = pd.DataFrame(columns=df.columns)
 
-    # NEW: out_of_stock only needs these two columns
+    # Out-of-stock: SKU-level only
     outofstock_df = pd.DataFrame(columns=["custom_label", "barcode"])
 
     print("\nProcessing orders...")
@@ -258,14 +256,34 @@ def process_orders():
             # Replace sort column
             new_row['sort'] = sku_qty_str
 
-            # Check fulfillability (unchanged)
+            # ─────────────────────────────────────
+            # Out-of-stock qualification (applies to ALL orders)
+            # ─────────────────────────────────────
+            # For each line in this order, check:
+            #   current_stock == requested_qty and > 0
+            # If true, this order would bring that SKU to exactly 0.
+            for bc, q in orders:
+                current_stock = stock.get(bc, 0)
+                if current_stock == q and current_stock > 0:
+                    outofstock_df = pd.concat(
+                        [
+                            outofstock_df,
+                            pd.DataFrame([{
+                                "custom_label": row.get("custom_label", ""),
+                                "barcode": bc
+                            }])
+                        ],
+                        ignore_index=True
+                    )
+
+            # Check fulfillability
             can_fulfill = all(
                 bc in stock and stock[bc] >= q
                 for bc, q in orders
             )
 
             if can_fulfill:
-                # Deduct stock for fulfillable orders (unchanged behaviour)
+                # Deduct stock for fulfillable orders
                 for bc, q in orders:
                     stock[bc] -= q
                 fulfillable_df = pd.concat(
@@ -278,28 +296,6 @@ def process_orders():
                     [unfulfillable_df, new_row.to_frame().T],
                     ignore_index=True
                 )
-
-                # ─────────────────────────────────────
-                # NEW: Out-of-stock classification
-                # ─────────────────────────────────────
-                # For out of stock, the item must be 0 WHEN packed.
-                # That means current_stock == requested_qty (and > 0).
-                # Example:
-                #   stock = 2, order qty = 2  → would go to 0 → mark as out_of_stock
-                #   stock = 1, order qty = 2  → unfulfillable but NOT out_of_stock
-                for bc, q in orders:
-                    current_stock = stock.get(bc, 0)
-                    if current_stock == q and current_stock > 0:
-                        outofstock_df = pd.concat(
-                            [
-                                outofstock_df,
-                                pd.DataFrame([{
-                                    "custom_label": row.get("custom_label", ""),
-                                    "barcode": bc
-                                }])
-                            ],
-                            ignore_index=True
-                        )
 
         except Exception as e:
             print(f"Error processing row: {label} → {e}")
