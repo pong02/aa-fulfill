@@ -1,6 +1,3 @@
-# inventory_check_v3_v4.py
-# Combines fetching from BoxHero API + processing merged_labels.csv
-
 import requests
 import json
 import time
@@ -47,6 +44,7 @@ MERGED_LABELS_CSV = BASE_PATH / "merged_labels.csv"
 FULFILLABLE_CSV = BASE_PATH / "fulfillable.csv"
 UNFULFILLABLE_CSV = BASE_PATH / "unfulfillable.csv"
 MISC_CSV = BASE_PATH / "misc.csv"
+OUT_OF_STOCK_CSV = BASE_PATH / "out_of_stock.csv"  # NEW
 
 # Optional: filter by specific locations
 LOCATION_IDS = None  # e.g. [12345, 67890]
@@ -219,7 +217,10 @@ def process_orders():
     new_columns = list(df.columns) + ["old_custom_label"]
     fulfillable_df = pd.DataFrame(columns=new_columns)
     unfulfillable_df = pd.DataFrame(columns=new_columns)
-    misc_df = pd.DataFrame(columns=df.columns)
+    misc_df = pd.DataFrame(columns(df.columns))
+
+    # NEW: out_of_stock only needs these two columns
+    outofstock_df = pd.DataFrame(columns=["custom_label", "barcode"])
 
     print("\nProcessing orders...")
     for _, row in df.iterrows():
@@ -238,8 +239,8 @@ def process_orders():
             # Build SKU*QTY string
             sku_qty_parts = []
             for bc, q in orders:
-                bc = bc.rstrip('!')
-                sku = sku_dict.get(bc, 'UNKNOWN')
+                bc_clean = bc.rstrip('!')
+                sku = sku_dict.get(bc_clean, 'UNKNOWN')
                 sku_qty_parts.append(f"{sku}*{q}")
             sku_qty_str = ', '.join(sku_qty_parts)
 
@@ -257,13 +258,14 @@ def process_orders():
             # Replace sort column
             new_row['sort'] = sku_qty_str
 
-            # Check fulfillability
+            # Check fulfillability (unchanged)
             can_fulfill = all(
                 bc in stock and stock[bc] >= q
                 for bc, q in orders
             )
 
             if can_fulfill:
+                # Deduct stock for fulfillable orders (unchanged behaviour)
                 for bc, q in orders:
                     stock[bc] -= q
                 fulfillable_df = pd.concat(
@@ -271,10 +273,33 @@ def process_orders():
                     ignore_index=True
                 )
             else:
+                # Unfulfillable as before
                 unfulfillable_df = pd.concat(
                     [unfulfillable_df, new_row.to_frame().T],
                     ignore_index=True
                 )
+
+                # ─────────────────────────────────────
+                # NEW: Out-of-stock classification
+                # ─────────────────────────────────────
+                # For out of stock, the item must be 0 WHEN packed.
+                # That means current_stock == requested_qty (and > 0).
+                # Example:
+                #   stock = 2, order qty = 2  → would go to 0 → mark as out_of_stock
+                #   stock = 1, order qty = 2  → unfulfillable but NOT out_of_stock
+                for bc, q in orders:
+                    current_stock = stock.get(bc, 0)
+                    if current_stock == q and current_stock > 0:
+                        outofstock_df = pd.concat(
+                            [
+                                outofstock_df,
+                                pd.DataFrame([{
+                                    "custom_label": row.get("custom_label", ""),
+                                    "barcode": bc
+                                }])
+                            ],
+                            ignore_index=True
+                        )
 
         except Exception as e:
             print(f"Error processing row: {label} → {e}")
@@ -284,12 +309,14 @@ def process_orders():
     fulfillable_df.to_csv(FULFILLABLE_CSV, index=False)
     unfulfillable_df.to_csv(UNFULFILLABLE_CSV, index=False)
     misc_df.to_csv(MISC_CSV, index=False)
+    outofstock_df.to_csv(OUT_OF_STOCK_CSV, index=False)
 
     print("\n" + "="*60)
     print("Processing complete!")
-    print(f"  Fulfillable  → {FULFILLABLE_CSV} ({len(fulfillable_df)} rows)")
+    print(f"  Fulfillable   → {FULFILLABLE_CSV} ({len(fulfillable_df)} rows)")
     print(f"  Unfulfillable → {UNFULFILLABLE_CSV} ({len(unfulfillable_df)} rows)")
-    print(f"  Misc         → {MISC_CSV} ({len(misc_df)} rows)")
+    print(f"  Out of stock  → {OUT_OF_STOCK_CSV} ({len(outofstock_df)} rows)")
+    print(f"  Misc          → {MISC_CSV} ({len(misc_df)} rows)")
     print("="*60)
 
 # ────────────────────────────────────────────────
