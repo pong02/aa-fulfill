@@ -42,7 +42,7 @@ MERGED_LABELS_CSV = BASE_PATH / "merged_labels.csv"
 FULFILLABLE_CSV = BASE_PATH / "fulfillable.csv"
 UNFULFILLABLE_CSV = BASE_PATH / "unfulfillable.csv"
 MISC_CSV = BASE_PATH / "misc.csv"
-OUT_OF_STOCK_CSV = BASE_PATH / "out_of_stock.csv"  # NEW
+OUT_OF_STOCK_CSV = BASE_PATH / "out_of_stock.csv"
 
 # Optional: filter by specific locations
 LOCATION_IDS = None  # e.g. [12345, 67890]
@@ -217,8 +217,8 @@ def process_orders():
     unfulfillable_df = pd.DataFrame(columns=new_columns)
     misc_df = pd.DataFrame(columns=df.columns)
 
-    # Out-of-stock: SKU-level only
-    outofstock_df = pd.DataFrame(columns=["custom_label", "barcode"])
+    # Out-of-stock: SKU-level only, with translated SKU in "location"
+    outofstock_df = pd.DataFrame(columns=["custom_label", "barcode", "location"])
 
     print("\nProcessing orders...")
     for _, row in df.iterrows():
@@ -262,15 +262,19 @@ def process_orders():
             # For each line in this order, check:
             #   current_stock == requested_qty and > 0
             # If true, this order would bring that SKU to exactly 0.
+            # "location" column holds the SKU from BoxHero.
             for bc, q in orders:
                 current_stock = stock.get(bc, 0)
                 if current_stock == q and current_stock > 0:
+                    bc_clean = bc.rstrip('!')
+                    sku = sku_dict.get(bc_clean, 'UNKNOWN')
                     outofstock_df = pd.concat(
                         [
                             outofstock_df,
                             pd.DataFrame([{
                                 "custom_label": row.get("custom_label", ""),
-                                "barcode": bc
+                                "barcode": bc,
+                                "location": sku
                             }])
                         ],
                         ignore_index=True
