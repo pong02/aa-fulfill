@@ -76,7 +76,7 @@ def fetch_all_items(location_ids=None, limit=100):
 
             print(f"  → Status: {resp.status_code}")
 
-            if resp.status_code != 200:
+            if resp.status_code = 200:
                 print("Error response:")
                 print(resp.text)
                 return None
@@ -237,7 +237,8 @@ def process_orders():
             # Build SKU*QTY string
             sku_qty_parts = []
             for bc, q in orders:
-                bc_clean = bc.rstrip('!')
+                bcp = bc.rstrip('!')
+                bc_clean = bcp.rstrip('.')
                 sku = sku_dict.get(bc_clean, 'UNKNOWN')
                 sku_qty_parts.append(f"{sku}*{q}")
             sku_qty_str = ', '.join(sku_qty_parts)
@@ -266,7 +267,8 @@ def process_orders():
             for bc, q in orders:
                 current_stock = stock.get(bc, 0)
                 if current_stock == q and current_stock > 0:
-                    bc_clean = bc.rstrip('!')
+                    bcp = bc.rstrip('!')
+                    bc_clean = bcp.rstrip('.')
                     sku = sku_dict.get(bc_clean, 'UNKNOWN')
                     outofstock_df = pd.concat(
                         [
