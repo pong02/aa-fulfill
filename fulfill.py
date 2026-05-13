@@ -76,7 +76,7 @@ def fetch_all_items(location_ids=None, limit=100):
 
             print(f"  → Status: {resp.status_code}")
 
-            if resp.status_code = 200:
+            if resp.status_code != 200:
                 print("Error response:")
                 print(resp.text)
                 return None
